@@ -6,7 +6,7 @@
 /*   By: jking-ye <jking-ye@student.42kl.edu.my>    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2022/05/16 11:50:53 by jking-ye          #+#    #+#             */
-/*   Updated: 2022/05/25 15:19:19 by jking-ye         ###   ########.fr       */
+/*   Updated: 2022/05/30 15:36:04 by jking-ye         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -14,32 +14,59 @@
 
 void	init_table(t_philo *philos, int argc, char **argv)
 {
-	int	i;
-	int	num_philo;
+	t_table	*table;
+	int		i;
 
+	table = malloc(sizeof(t_table));
+	table->num_philo = ft_atoi(argv[1]);
+	table->die_ms = ft_atoi(argv[2]);
+	table->eat_ms = ft_atoi(argv[3]);
+	table->sleep_ms = ft_atoi(argv[4]);
+	if (argc == 6)
+		table->n_eat = ft_atoi(argv[5]);
+	table->isdead = 0;
+	table->start = 0;
+	pthread_mutex_init(&table->die, NULL);
+	pthread_mutex_init(&table->print, NULL);
 	i = 0;
-	num_philo = ft_atoi(argv[1]);
-	while (i < num_philo)
+	while (i < table->num_philo)
 	{
-		philos[i].info.num_philo = ft_atoi(argv[1]);
-		philos[i].info.die_ms = ft_atoi(argv[2]);
-		philos[i].info.eat_ms = ft_atoi(argv[3]);
-		philos[i].info.sleep_ms = ft_atoi(argv[4]);
-		philos[i].eat_count = 0;
-		if (argc == 6)
-			philos[i].info.num_eat = ft_atoi(argv[5]);
-		if (i + 1 != num_philo)
-			philos[i].next_philo = &philos[i + 1];
-		else
-			philos[i].next_philo = &philos[0];
-		philos[i].id = i + 1;
+		philos[i].info = table;
 		i++;
 	}
 }
 
-void	msleep(long i)
+void	waitphilo(t_philo *philo)
 {
-	usleep(i * 1000);
+	msleep(2 * philo->info->num_philo);
+	pthread_mutex_lock(&philo->info->die);
+	while (philo->info->start == 0)
+	{
+		usleep(500);
+	}
+	pthread_mutex_unlock(&philo->info->die);
+	msleep(philo->info->num_philo / 3);
+}
+
+void	msleep(long timetosleep)
+{
+	struct timeval	current;
+	long long		start_time;
+	long long		end_time;
+
+	gettimeofday(&current, NULL);
+	start_time = (current.tv_sec * 1000);
+	start_time += (current.tv_usec / 1000);
+	end_time = start_time + timetosleep;
+	while (start_time < end_time)
+	{
+		gettimeofday(&current, NULL);
+		start_time = (current.tv_sec * 1000);
+		start_time += (current.tv_usec / 1000);
+		usleep(50);
+		if (start_time > end_time)
+			break ;
+	}
 }
 
 void	philo_action(char *str, t_philo *philo, char *color)
@@ -47,16 +74,22 @@ void	philo_action(char *str, t_philo *philo, char *color)
 	struct timeval	timestamp;
 	long long		current;
 
-	usleep(300);
-	if (*philo->isdead != 1)
+	pthread_mutex_lock(&philo->info->die);
+	if (philo->info->isdead != 1)
 	{
-		pthread_mutex_lock(philo->print);
+		pthread_mutex_unlock(&philo->info->die);
+		pthread_mutex_lock(&philo->info->print);
 		gettimeofday(&timestamp, NULL);
 		current = timestamp.tv_sec * 1000.0;
 		current += timestamp.tv_usec / 1000.0;
 		if (ft_strcmp("is eating", str) == 0)
-			philo->begin = current;
+		{
+			pthread_mutex_lock(&philo->last_eat_mutex);
+			philo->last_ate = current;
+			pthread_mutex_unlock(&philo->last_eat_mutex);
+		}
 		printf("%s%lld %d %s\n", color, current, philo->id, str);
-		pthread_mutex_unlock(philo->print);
+		pthread_mutex_unlock(&philo->info->print);
 	}
+	pthread_mutex_unlock(&philo->info->die);
 }
